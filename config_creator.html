@@ -12,6 +12,9 @@
       margin-bottom: 10px;
       margin-left: 20px;
     }
+    .bulk-import-container {
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
@@ -22,8 +25,22 @@
   <button onclick="addLecture()">Add Lecture</button>
   <button onclick="saveConfig()">Save Configuration</button>
 
+  <!-- Bulk Import Area -->
+  <div class="bulk-import-container">
+    <h2>Bulk Import Questions</h2>
+    <select id="lecture-select">
+      <option value="">Select a lecture</option>
+    </select>
+    <textarea id="bulk-questions" rows="5" placeholder="Enter questions, one per line"></textarea>
+    <button onclick="bulkImportQuestions()">Import Questions</button>
+  </div>
+
   <script>
     let lectureCount = 0;
+
+    function generateUUID() {
+      return crypto.randomUUID();
+    }
 
     function addLecture() {
       const container = document.getElementById('lectures-container');
@@ -46,7 +63,7 @@
       const addQuestionButton = document.createElement('button');
       addQuestionButton.textContent = "Add Question";
       addQuestionButton.addEventListener('click', function () {
-        addQuestion(lectureDiv.id); // Pass the ID of the lecture container
+        addQuestion(lectureDiv.id);
       });
       lectureDiv.appendChild(addQuestionButton);
 
@@ -58,11 +75,18 @@
       // Append Lecture to Container
       container.appendChild(lectureDiv);
 
+      // Add Lecture to Dropdown
+      const lectureSelect = document.getElementById('lecture-select');
+      const lectureOption = document.createElement('option');
+      lectureOption.value = `lecture-${lectureCount}`;
+      lectureOption.textContent = `Lecture ${lectureCount + 1}`;
+      lectureSelect.appendChild(lectureOption);
+
       // Increment Lecture Count After Setup
       lectureCount++;
     }
 
-    function addQuestion(lectureId) {
+    function addQuestion(lectureId, questionText = "") {
       const lectureDiv = document.getElementById(lectureId);
       if (!lectureDiv) {
         alert("Please add a lecture first.");
@@ -75,10 +99,11 @@
         return;
       }
 
-      const questionIndex = questionsContainer.children.length;
+      const questionUUID = generateUUID(); // Generate a unique identifier for the question
 
       const questionDiv = document.createElement('div');
       questionDiv.classList.add('question-container');
+      questionDiv.dataset.uuid = questionUUID; // Store the UUID in the DOM element for future reference
 
       // Question Input
       const questionLabel = document.createElement('label');
@@ -87,12 +112,40 @@
 
       const questionInput = document.createElement('input');
       questionInput.type = "text";
-      questionInput.id = `question-${lectureId.split('-')[1]}-${questionIndex}`;
       questionInput.placeholder = "Enter your question";
+      questionInput.value = questionText; // Pre-fill with imported question text
       questionDiv.appendChild(questionInput);
 
       // Append Question to Container
       questionsContainer.appendChild(questionDiv);
+    }
+
+    function bulkImportQuestions() {
+      const lectureSelect = document.getElementById('lecture-select');
+      const selectedLectureId = lectureSelect.value;
+
+      if (!selectedLectureId) {
+        alert("Please select a lecture to import questions.");
+        return;
+      }
+
+      const bulkQuestions = document.getElementById('bulk-questions').value;
+      if (!bulkQuestions.trim()) {
+        alert("Please enter some questions to import.");
+        return;
+      }
+
+      const questionList = bulkQuestions.split('\n').map(q => q.trim()).filter(q => q);
+      if (questionList.length === 0) {
+        alert("No valid questions found.");
+        return;
+      }
+
+      questionList.forEach(question => addQuestion(selectedLectureId, question));
+
+      // Clear the textarea after import
+      document.getElementById('bulk-questions').value = "";
+      alert(`${questionList.length} questions imported successfully.`);
     }
 
     function saveConfig() {
@@ -108,9 +161,12 @@
 
         if (questionsContainer) {
           for (let j = 0; j < questionsContainer.children.length; j++) {
-            const questionInput = document.getElementById(`question-${i}-${j}`);
+            const questionDiv = questionsContainer.children[j];
+            const questionInput = questionDiv.querySelector('input');
+            const questionUUID = questionDiv.dataset.uuid; // Retrieve the UUID from the DOM element
+
             if (questionInput) {
-              questions.push({ text: questionInput.value, answer: "" });
+              questions.push({ uuid: questionUUID, text: questionInput.value, answer: "" });
             }
           }
         }
