@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Configuration Creator</title>
+  <style>
+    .lecture-container {
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-bottom: 20px;
+    }
+    .question-container {
+      margin-bottom: 10px;
+      margin-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Configuration Creator</h1>
+
+  <div id="lectures-container"></div>
+
+  <button onclick="addLecture()">Add Lecture</button>
+  <button onclick="saveConfig()">Save Configuration</button>
+
+  <script>
+    let lectureCount = 0;
+
+    function addLecture() {
+      const container = document.getElementById('lectures-container');
+      const lectureDiv = document.createElement('div');
+      lectureDiv.classList.add('lecture-container');
+      lectureDiv.id = `lecture-${lectureCount}`;
+
+      // Lecture Name Input
+      const lectureNameLabel = document.createElement('label');
+      lectureNameLabel.textContent = "Lecture Name: ";
+      lectureDiv.appendChild(lectureNameLabel);
+
+      const lectureNameInput = document.createElement('input');
+      lectureNameInput.type = "text";
+      lectureNameInput.id = `lecture-name-${lectureCount}`;
+      lectureNameInput.placeholder = "Enter lecture name";
+      lectureDiv.appendChild(lectureNameInput);
+
+      // Add Question Button
+      const addQuestionButton = document.createElement('button');
+      addQuestionButton.textContent = "Add Question";
+      addQuestionButton.addEventListener('click', function () {
+        addQuestion(lectureDiv.id); // Pass the ID of the lecture container
+      });
+      lectureDiv.appendChild(addQuestionButton);
+
+      // Questions Container
+      const questionsContainer = document.createElement('div');
+      questionsContainer.id = `questions-${lectureCount}`;
+      lectureDiv.appendChild(questionsContainer);
+
+      // Append Lecture to Container
+      container.appendChild(lectureDiv);
+
+      // Increment Lecture Count After Setup
+      lectureCount++;
+    }
+
+    function addQuestion(lectureId) {
+      const lectureDiv = document.getElementById(lectureId);
+      if (!lectureDiv) {
+        alert("Please add a lecture first.");
+        return;
+      }
+
+      const questionsContainer = lectureDiv.querySelector(`#questions-${lectureId.split('-')[1]}`);
+      if (!questionsContainer) {
+        console.error(`Questions container not found for ${lectureId}.`);
+        return;
+      }
+
+      const questionIndex = questionsContainer.children.length;
+
+      const questionDiv = document.createElement('div');
+      questionDiv.classList.add('question-container');
+
+      // Question Input
+      const questionLabel = document.createElement('label');
+      questionLabel.textContent = "Question: ";
+      questionDiv.appendChild(questionLabel);
+
+      const questionInput = document.createElement('input');
+      questionInput.type = "text";
+      questionInput.id = `question-${lectureId.split('-')[1]}-${questionIndex}`;
+      questionInput.placeholder = "Enter your question";
+      questionDiv.appendChild(questionInput);
+
+      // Append Question to Container
+      questionsContainer.appendChild(questionDiv);
+    }
+
+    function saveConfig() {
+      const configData = { lectures: [] };
+
+      for (let i = 0; i < lectureCount; i++) {
+        const lectureNameInput = document.getElementById(`lecture-name-${i}`);
+        if (!lectureNameInput) continue;
+
+        const lectureName = lectureNameInput.value;
+        const questionsContainer = document.getElementById(`questions-${i}`);
+        const questions = [];
+
+        if (questionsContainer) {
+          for (let j = 0; j < questionsContainer.children.length; j++) {
+            const questionInput = document.getElementById(`question-${i}-${j}`);
+            if (questionInput) {
+              questions.push({ text: questionInput.value, answer: "" });
+            }
+          }
+        }
+
+        configData.lectures.push({ name: lectureName, questions });
+      }
+
+      const jsonData = JSON.stringify(configData, null, 2);
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'exam_config.json';
+      link.click();
+    }
+  </script>
+</body>
+</html>
