@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Exam Page</title>
+  <style>
+    .question-container {
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-bottom: 20px;
+      position: relative; 
+    }
+    .save-indicator {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+      font-size: 12px;
+      color: gray;
+    }
+    .lecture-name {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    #settings-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      padding: 5px 10px;
+    }
+    #settings-box {
+      position: absolute;
+      top: 35px; /* Adjust to fit below the button */
+      right: 10px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background-color: white;
+      display: none; /* Initially hidden */
+      width: 200px; /* Adjust width as needed */
+      z-index: 10; /* Ensure it's on top */
+      opacity: 0.95; /* Make it opaque */
+    }
+    .settings-open #settings-box {
+      display: block; /* Show when settings are open */
+    }
+    .settings-open #settings-button {
+      border-bottom: none; /* Remove bottom border when open */
+    }
+    #settings-button:hover {
+      background-color: #f0f0f0;
+    }
+    /* Arrow Styling */
+    .arrow {
+      display: inline-block;
+      transition: transform 0.2s;
+    }
+    .settings-open .arrow {
+      transform: rotate(180deg); /* Flip arrow when open */
+    }
+  </style>
+  <script src="tiny/tinymce.min.js" referrerpolicy="origin"></script>
+</head>
+<body>
+  <h1>Exam Page</h1>
+
+  <div id="settings-button" onclick="toggleSettings()">Settings <span class="arrow">&#8595;</span></div>
+  <div id="settings-box">
+    <input type="file" id="file-upload" accept=".json">
+    <button onclick="loadConfig()">Load Configuration</button>
+
+    <div>
+      <label>
+        <input type="radio" name="order" value="sequential" checked> Sequential
+      </label>
+      <label>
+        <input type="radio" name="order" value="random"> Random
+      </label>
+    </div>
+  </div>
+
+  <div id="question-container">
+  </div>
+
+  <button id="prev-button" onclick="showPreviousQuestion()" disabled>Previous</button>
+  <button id="next-button" onclick="showNextQuestion()">Next</button>
+  <button onclick="saveAnswers()">Save</button>
+
+  <script>
+    let examData;
+    let currentQuestionIndex = 0;
+    let questionOrder = [];
+    let timerId = null;
+    let updateIndicatorTimerId = null;
+    let lastSavedTime = null;
+
+    function loadConfig() {
+      const fileInput = document.getElementById('file-upload');
+      const file = fileInput.files[0];
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          try {
+            examData = JSON.parse(e.target.result);
+            initializeExam();
+          } catch (error) {
+            console.error("Error parsing JSON:", error);
+            alert("Invalid configuration file. Please upload a valid JSON file.");
+          }
+        };
+        reader.readAsText(file);
+      } else {
+        alert("Please select a configuration file to upload.");
+      }
+    }
+
+    function initializeExam() {
+      let lectureQuestionIndices = [];
+      examData.lectures.forEach((lecture, lectureIndex) => {
+        for (let i = 0; i < lecture.questions.length; i++) {
+          lectureQuestionIndices.push({ lectureIndex, questionIndex: i });
+        }
+      });
+      questionOrder = lectureQuestionIndices;
+
+      if (document.querySelector('input[name="order"]:checked').value === "random") {
+        shuffle(questionOrder);
+      }
+
+      currentQuestionIndex = 0;
+      showQuestion();
+      startAutosaveTimer();
+    }
+
+    function showQuestion() {
+        if (questionOrder.length === 0) return;
+
+        const container = document.getElementById('question-container');
+        container.innerHTML = ''; // Clear previous question
+
+        // Get the current lecture and question
+        const { lectureIndex, questionIndex } = questionOrder[currentQuestionIndex];
+        const lecture = examData.lectures[lectureIndex];
+        const question = lecture.questions[questionIndex];
+
+        // Create a container for the question
+        const questionDiv = document.createElement('div');
+        questionDiv.classList.add('question-container');
+
+        // Add the lecture name
+        const lectureNameDiv = document.createElement('div');
+        lectureNameDiv.classList.add('lecture-name');
+        lectureNameDiv.textContent = lecture.name;
+        questionDiv.appendChild(lectureNameDiv);
+
+        // Add the question text
+        const questionText = document.createElement('p');
+        questionText.textContent = question.text;
+        questionDiv.appendChild(questionText);
+
+        // Create a unique ID for the textarea
+        const answerAreaId = `answer-${lectureIndex}-${questionIndex}`;
+
+        // Create the textarea for the answer
+        const answerArea = document.createElement('textarea');
+        answerArea.id = answerAreaId;
+        answerArea.value = question.answer || ''; // Set the initial content
+        questionDiv.appendChild(answerArea);
+
+        // Add save indicator
+        const saveIndicator = document.createElement('div');
+        saveIndicator.classList.add('save-indicator');
+        saveIndicator.id = 'save-indicator';
+        saveIndicator.textContent = 'Not yet saved';
+        questionDiv.appendChild(saveIndicator);
+
+        // Append the question container to the main container
+        container.appendChild(questionDiv);
+
+        // Initialize TinyMCE on the created textarea
+        tinymce.init({
+          selector: `#${answerAreaId}`,
+          plugins: 'advlist autolink lists link image charmap print preview anchor ' +
+            'searchreplace visualblocks code fullscreen ' +
+            'insertdatetime media table paste code help wordcount',
+          toolbar: 'undo redo | formatselect | ' +
+            'bold italic backcolor | alignleft aligncenter ' +
+            'alignright alignjustify | bullist numlist outdent indent | ' +
+            'removeformat | help',
+          setup: function (editor) {
+            editor.on('init', function (e) {
+              editor.setContent(question.answer || '');
+            });
+            editor.on('keyup', function (e) {
+              console.log('Editor content changed:', editor.getContent());
+            });
+          }
+        });
+
+        // Enable/disable navigation buttons based on the current question index
+        document.getElementById('prev-button').disabled = currentQuestionIndex === 0;
+        document.getElementById('next-button').disabled = currentQuestionIndex === questionOrder.length - 1;
+      }
+
+      function showNextQuestion() {
+        saveCurrentAnswer();
+        // Remove the current editor instance before moving to the next question
+        const currentEditorId = `answer-${questionOrder[currentQuestionIndex].lectureIndex}-${questionOrder[currentQuestionIndex].questionIndex}`;
+        tinymce.remove(`#${currentEditorId}`);
+        currentQuestionIndex++;
+        if (currentQuestionIndex >= questionOrder.length) {
+          currentQuestionIndex = questionOrder.length - 1;
+        }
+        showQuestion();
+      }
+
+      function showPreviousQuestion() {
+        saveCurrentAnswer();
+        // Remove the current editor instance before moving to the previous question
+        const currentEditorId = `answer-${questionOrder[currentQuestionIndex].lectureIndex}-${questionOrder[currentQuestionIndex].questionIndex}`;
+        tinymce.remove(`#${currentEditorId}`);
+        currentQuestionIndex--;
+        if (currentQuestionIndex < 0) {
+          currentQuestionIndex = 0;
+        }
+        showQuestion();
+      }
+
+      function saveCurrentAnswer() {
+        if (questionOrder.length === 0) return;
+
+        const { lectureIndex, questionIndex } = questionOrder[currentQuestionIndex];
+        const answerAreaId = `answer-${lectureIndex}-${questionIndex}`;
+        const editor = tinymce.get(answerAreaId);
+
+        if (editor) {
+            examData.lectures[lectureIndex].questions[questionIndex].answer = editor.getContent();
+            lastSavedTime = new Date();
+            updateSaveIndicator();
+        } else {
+            console.error('Editor not found');
+        }
+    }
+
+      function saveAnswers() {
+        saveCurrentAnswer();
+
+        const updatedData = JSON.stringify(examData, null, 2);
+
+        const blob = new Blob([updatedData], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'exam_config.json';
+        link.click();
+      }
+
+      function startAutosaveTimer() {
+        if (timerId) {
+          clearInterval(timerId);
+        }
+        timerId = setInterval(() => {
+          saveCurrentAnswer();
+        }, 5000);
+
+        if (updateIndicatorTimerId) {
+          clearInterval(updateIndicatorTimerId);
+        }
+        updateIndicatorTimerId = setInterval(updateSaveIndicator, 1000);
+      }
+
+      function updateSaveIndicator() {
+        const indicator = document.getElementById('save-indicator');
+        if (!indicator) return;
+
+        if (lastSavedTime) {
+          const secondsSinceLastSave = Math.round((new Date() - lastSavedTime) / 1000);
+          indicator.textContent = `Last saved (${secondsSinceLastSave}s ago)`;
+        } else {
+          indicator.textContent = 'Saving...';
+        }
+      }
+
+      function toggleSettings() {
+        const settingsBox = document.getElementById('settings-box');
+        const settingsButton = document.getElementById('settings-button');
+        const arrow = settingsButton.querySelector('.arrow');
+
+        // Toggle the settings box visibility
+        if (settingsBox.style.display === 'none') {
+          settingsBox.style.display = 'block';
+          settingsButton.parentElement.classList.add('settings-open');
+        } else {
+          settingsBox.style.display = 'none';
+          settingsButton.parentElement.classList.remove('settings-open');
+        }
+      }
+
+    // Helper function to shuffle an array
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+  </script>
+</body>
+</html>
