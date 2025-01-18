@@ -3,11 +3,12 @@
 <head>
   <title>Exam Page</title>
   <style>
+    /* Existing styles */
     .question-container {
       border: 1px solid #ccc;
       padding: 10px;
       margin-bottom: 20px;
-      position: relative; 
+      position: relative;
     }
     .save-indicator {
       position: absolute;
@@ -20,18 +21,22 @@
       font-weight: bold;
       margin-bottom: 5px;
     }
-    #settings-button {
+    .dropdown-button {
       position: absolute;
       top: 10px;
-      right: 10px;
       cursor: pointer;
       border: 1px solid #ccc;
       padding: 5px 10px;
     }
-    #settings-box {
+    #settings-button {
+      right: 10px;
+    }
+    #contents-button {
+      right: 100px; /* Adjust position as needed */
+    }
+    .dropdown-box {
       position: absolute;
       top: 35px; /* Adjust to fit below the button */
-      right: 10px;
       border: 1px solid #ccc;
       padding: 10px;
       background-color: white;
@@ -40,13 +45,19 @@
       z-index: 10; /* Ensure it's on top */
       opacity: 0.95; /* Make it opaque */
     }
-    .settings-open #settings-box {
+    #settings-box {
+      right: 10px;
+    }
+    #contents-box {
+      right: 100px; /* Adjust position as needed */
+    }
+    .dropdown-open .dropdown-box {
       display: block; /* Show when settings are open */
     }
-    .settings-open #settings-button {
+    .dropdown-open .dropdown-button {
       border-bottom: none; /* Remove bottom border when open */
     }
-    #settings-button:hover {
+    .dropdown-button:hover {
       background-color: #f0f0f0;
     }
     /* Arrow Styling */
@@ -54,8 +65,24 @@
       display: inline-block;
       transition: transform 0.2s;
     }
-    .settings-open .arrow {
+    .dropdown-open .arrow {
       transform: rotate(180deg); /* Flip arrow when open */
+    }
+    #contents-list {
+      list-style: none;
+      padding: 0;
+    }
+    #contents-list li {
+      cursor: pointer;
+      padding: 5px 0;
+    }
+    #contents-list li:hover {
+      text-decoration: underline;
+    }
+    .lecture-completion {
+      font-size: smaller;
+      color: gray;
+      margin-left: 5px;
     }
   </style>
   <script src="tiny/tinymce.min.js" referrerpolicy="origin"></script>
@@ -63,17 +90,23 @@
 <body>
   <h1>Exam Page</h1>
 
-  <div id="settings-button" onclick="toggleSettings()">Settings <span class="arrow">&#8595;</span></div>
-  <div id="settings-box">
+  <div id="contents-button" class="dropdown-button" onclick="toggleDropdown('contents')">Contents <span class="arrow">&#8595;</span></div>
+  <div id="contents-box" class="dropdown-box">
+    <div id="exam-completion">Exam Completion: 0%</div>
+    <ul id="contents-list"></ul>
+  </div>
+
+  <div id="settings-button" class="dropdown-button" onclick="toggleDropdown('settings')">Settings <span class="arrow">&#8595;</span></div>
+  <div id="settings-box" class="dropdown-box">
     <input type="file" id="file-upload" accept=".json">
     <button onclick="loadConfig()">Load Configuration</button>
 
     <div>
       <label>
-        <input type="radio" name="order" value="sequential" checked> Sequential
+        <input type="radio" name="order" value="sequential" onclick="setQuestionOrder('sequential')"> Sequential
       </label>
       <label>
-        <input type="radio" name="order" value="random"> Random
+        <input type="radio" name="order" value="random" onclick="setQuestionOrder('random')"> Random
       </label>
     </div>
   </div>
@@ -92,6 +125,7 @@
     let timerId = null;
     let updateIndicatorTimerId = null;
     let lastSavedTime = null;
+    let activeDropdown = null; // Track the currently open dropdown
 
     function loadConfig() {
       const fileInput = document.getElementById('file-upload');
@@ -103,6 +137,15 @@
           try {
             examData = JSON.parse(e.target.result);
             initializeExam();
+            populateContents(); // Populate the contents dropdown
+            
+            // Check if order setting exists and set radio button accordingly
+            const orderSetting = localStorage.getItem('questionOrder');
+            if (orderSetting) {
+              document.querySelector(`input[name="order"][value="${orderSetting}"]`).checked = true;
+            } else {
+              document.querySelector('input[name="order"][value="sequential"]').checked = true;
+            }
           } catch (error) {
             console.error("Error parsing JSON:", error);
             alert("Invalid configuration file. Please upload a valid JSON file.");
@@ -115,22 +158,27 @@
     }
 
     function initializeExam() {
-      let lectureQuestionIndices = [];
-      examData.lectures.forEach((lecture, lectureIndex) => {
-        for (let i = 0; i < lecture.questions.length; i++) {
-          lectureQuestionIndices.push({ lectureIndex, questionIndex: i });
+        let lectureQuestionIndices = [];
+        examData.lectures.forEach((lecture, lectureIndex) => {
+          for (let i = 0; i < lecture.questions.length; i++) {
+            lectureQuestionIndices.push({ lectureIndex, questionIndex: i });
+          }
+        });
+        questionOrder = lectureQuestionIndices;
+      
+        // Use local storage to remember the selected order
+        const orderSetting = localStorage.getItem('questionOrder');
+        if (orderSetting === 'random') {
+          shuffle(questionOrder);
+        } else {
+          // Sequential is the default if nothing is stored
+          // No action needed here, as questionOrder is already in sequential order
         }
-      });
-      questionOrder = lectureQuestionIndices;
-
-      if (document.querySelector('input[name="order"]:checked').value === "random") {
-        shuffle(questionOrder);
+      
+        currentQuestionIndex = 0;
+        showQuestion();
+        startAutosaveTimer();
       }
-
-      currentQuestionIndex = 0;
-      showQuestion();
-      startAutosaveTimer();
-    }
 
     function showQuestion() {
         if (questionOrder.length === 0) return;
@@ -159,7 +207,7 @@
         questionDiv.appendChild(questionText);
 
         // Create a unique ID for the textarea
-        const answerAreaId = `answer-${lectureIndex}-${questionIndex}`;
+        const answerAreaId = `answer-<span class="math-inline">\{lectureIndex\}\-</span>{questionIndex}`;
 
         // Create the textarea for the answer
         const answerArea = document.createElement('textarea');
@@ -202,106 +250,205 @@
         document.getElementById('next-button').disabled = currentQuestionIndex === questionOrder.length - 1;
       }
 
-      function showNextQuestion() {
-        saveCurrentAnswer();
-        // Remove the current editor instance before moving to the next question
-        const currentEditorId = `answer-${questionOrder[currentQuestionIndex].lectureIndex}-${questionOrder[currentQuestionIndex].questionIndex}`;
-        tinymce.remove(`#${currentEditorId}`);
-        currentQuestionIndex++;
-        if (currentQuestionIndex >= questionOrder.length) {
-          currentQuestionIndex = questionOrder.length - 1;
-        }
-        showQuestion();
+    function showNextQuestion() {
+      saveCurrentAnswer();
+      // Remove the current editor instance before moving to the next question
+      const currentEditorId = `answer-<span class="math-inline">\{questionOrder\[currentQuestionIndex\]\.lectureIndex\}\-</span>{questionOrder[currentQuestionIndex].questionIndex}`;
+      tinymce.remove(`#${currentEditorId}`);
+      currentQuestionIndex++;
+      if (currentQuestionIndex >= questionOrder.length) {
+        currentQuestionIndex = questionOrder.length - 1;
       }
-
-      function showPreviousQuestion() {
-        saveCurrentAnswer();
-        // Remove the current editor instance before moving to the previous question
-        const currentEditorId = `answer-${questionOrder[currentQuestionIndex].lectureIndex}-${questionOrder[currentQuestionIndex].questionIndex}`;
-        tinymce.remove(`#${currentEditorId}`);
-        currentQuestionIndex--;
-        if (currentQuestionIndex < 0) {
-          currentQuestionIndex = 0;
-        }
-        showQuestion();
-      }
-
-      function saveCurrentAnswer() {
-        if (questionOrder.length === 0) return;
-
-        const { lectureIndex, questionIndex } = questionOrder[currentQuestionIndex];
-        const answerAreaId = `answer-${lectureIndex}-${questionIndex}`;
-        const editor = tinymce.get(answerAreaId);
-
-        if (editor) {
-            examData.lectures[lectureIndex].questions[questionIndex].answer = editor.getContent();
-            lastSavedTime = new Date();
-            updateSaveIndicator();
-        } else {
-            console.error('Editor not found');
-        }
+      showQuestion();
+      updateLectureCompletion();
     }
 
-      function saveAnswers() {
-        saveCurrentAnswer();
-
-        const updatedData = JSON.stringify(examData, null, 2);
-
-        const blob = new Blob([updatedData], { type: 'application/json' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'exam_config.json';
-        link.click();
+    function showPreviousQuestion() {
+      saveCurrentAnswer();
+      // Remove the current editor instance before moving to the previous question
+      const currentEditorId = `answer-<span class="math-inline">\{questionOrder\[currentQuestionIndex\]\.lectureIndex\}\-</span>{questionOrder[currentQuestionIndex].questionIndex}`;
+      tinymce.remove(`#${currentEditorId}`);
+      currentQuestionIndex--;
+      if (currentQuestionIndex < 0) {
+        currentQuestionIndex = 0;
       }
+      showQuestion();
+      updateLectureCompletion();
+    }
 
-      function startAutosaveTimer() {
-        if (timerId) {
-          clearInterval(timerId);
-        }
-        timerId = setInterval(() => {
-          saveCurrentAnswer();
-        }, 5000);
+    function saveCurrentAnswer() {
+      if (questionOrder.length === 0) return;
 
-        if (updateIndicatorTimerId) {
-          clearInterval(updateIndicatorTimerId);
-        }
-        updateIndicatorTimerId = setInterval(updateSaveIndicator, 1000);
-      }
+      const { lectureIndex, questionIndex } = questionOrder[currentQuestionIndex];
+      const answerAreaId = `answer-<span class="math-inline">\{lectureIndex\}\-</span>{questionIndex}`;
+      const editor = tinymce.get(answerAreaId);
 
-      function updateSaveIndicator() {
-        const indicator = document.getElementById('save-indicator');
-        if (!indicator) return;
-
-        if (lastSavedTime) {
-          const secondsSinceLastSave = Math.round((new Date() - lastSavedTime) / 1000);
-          indicator.textContent = `Last saved (${secondsSinceLastSave}s ago)`;
-        } else {
-          indicator.textContent = 'Saving...';
-        }
-      }
-
-      function toggleSettings() {
-        const settingsBox = document.getElementById('settings-box');
-        const settingsButton = document.getElementById('settings-button');
-        const arrow = settingsButton.querySelector('.arrow');
-
-        // Toggle the settings box visibility
-        if (settingsBox.style.display === 'none') {
-          settingsBox.style.display = 'block';
-          settingsButton.parentElement.classList.add('settings-open');
-        } else {
-          settingsBox.style.display = 'none';
-          settingsButton.parentElement.classList.remove('settings-open');
-        }
-      }
-
-    // Helper function to shuffle an array
-    function shuffle(array) {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
+      if (editor) {
+          examData.lectures[lectureIndex].questions[questionIndex].answer = editor.getContent();
+          lastSavedTime = new Date();
+          updateSaveIndicator();
+      } else {
+          console.error('Editor not found');
       }
     }
-  </script>
-</body>
-</html>
+
+    function saveAnswers() {
+      saveCurrentAnswer();
+
+      const updatedData = JSON.stringify(examData, null, 2);
+
+      const blob = new Blob([updatedData], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'exam_config.json';
+      link.click();
+    }
+
+    function startAutosaveTimer() {
+      if (timerId) {
+        clearInterval(timerId);
+      }
+      timerId = setInterval(() => {
+        saveCurrentAnswer();
+      }, 5000);
+
+      if (updateIndicatorTimerId) {
+        clearInterval(updateIndicatorTimerId);
+      }
+      updateIndicatorTimerId = setInterval(updateSaveIndicator, 1000);
+    }
+
+    function updateSaveIndicator() {
+      const indicator = document.getElementById('save-indicator');
+      if (!indicator) return;
+
+      if (lastSavedTime) {
+        const secondsSinceLastSave = Math.round((new Date() - lastSavedTime) / 1000);
+        indicator.textContent = `Last saved (${secondsSinceLastSave}s ago)`;
+      } else {
+        indicator.textContent = 'Saving...';
+      }
+    }
+
+    function toggleDropdown(type) {
+        const button = document.getElementById(`${type}-button`);
+        const box = document.getElementById(`${type}-box`);
+        const arrow = button.querySelector('.arrow');
+      
+        if (activeDropdown === type) {
+          // Close the currently active dropdown
+          box.style.display = 'none';
+          button.classList.remove('dropdown-open');
+          arrow.style.transform = 'rotate(0deg)';
+          activeDropdown = null;
+        } else {
+          // Close any other open dropdown
+          if (activeDropdown) {
+            const activeBox = document.getElementById(`${activeDropdown}-box`);
+            const activeButton = document.getElementById(`${activeDropdown}-button`);
+            const activeArrow = activeButton.querySelector('.arrow');
+      
+            activeBox.style.display = 'none';
+            activeButton.classList.remove('dropdown-open');
+            activeArrow.style.transform = 'rotate(0deg)';
+          }
+      
+          // Open the selected dropdown
+          box.style.display = 'block';
+          button.classList.add('dropdown-open');
+          arrow.style.transform = 'rotate(180deg)';
+          activeDropdown = type;
+        }
+      }
+      
+      // Close dropdowns when clicking outside
+      document.addEventListener('click', function(event) {
+        if (activeDropdown) {
+          const activeBox = document.getElementById(`${activeDropdown}-box`);
+          const activeButton = document.getElementById(`${activeDropdown}-button`);
+      
+          if (!activeButton.contains(event.target) && !activeBox.contains(event.target)) {
+            toggleDropdown(activeDropdown);
+          }
+        }
+      });
+
+    // Function to set the question order (sequential or random)
+    function setQuestionOrder(order) {
+        localStorage.setItem('questionOrder', order); // Store the order in local storage
+
+        // Only re-initialize if we have exam data
+        if (examData) {
+          initializeExam();
+        }
+      }
+
+    // Populate the contents dropdown list
+    function populateContents() {
+        const contentsList = document.getElementById('contents-list');
+        contentsList.innerHTML = ''; // Clear existing list
+      
+        examData.lectures.forEach((lecture, lectureIndex) => {
+          const listItem = document.createElement('li');
+          listItem.textContent = lecture.name;
+          
+          // Calculate and display the completion percentage for the lecture
+          const completionPercentage = calculateLectureCompletion(lectureIndex);
+          const completionSpan = document.createElement('span');
+          completionSpan.classList.add('lecture-completion');
+          completionSpan.textContent = `(${completionPercentage}% complete)`;
+          listItem.appendChild(completionSpan);
+      
+          listItem.addEventListener('click', () => {
+            jumpToLecture(lectureIndex);
+            toggleDropdown('contents');
+          });
+      
+          contentsList.appendChild(listItem);
+        });
+      
+        updateExamCompletion(); // Update overall exam completion
+      }
+
+    // Function to calculate the completion percentage of a specific lecture
+    function calculateLectureCompletion(lectureIndex) {
+      const lecture = examData.lectures[lectureIndex];
+      const totalQuestions = lecture.questions.length;
+      const answeredQuestions = lecture.questions.filter(question => question.answer && question.answer.trim() !== '').length;
+
+      return totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+    }
+
+    // Function to update the completion status of each lecture
+    function updateLectureCompletion() {
+        const listItems = document.querySelectorAll('#contents-list li');
+        listItems.forEach((item, index) => {
+          const completionPercentage = calculateLectureCompletion(index);
+          let completionSpan = item.querySelector('.lecture-completion');
+          if (!completionSpan) {
+            completionSpan = document.createElement('span');
+            completionSpan.classList.add('lecture-completion');
+            item.appendChild(completionSpan);
+          }
+          completionSpan.textContent = `(${completionPercentage}% complete)`;
+        });
+      
+        updateExamCompletion(); // Update overall exam completion
+      }
+
+    // Function to update the overall exam completion percentage
+    function updateExamCompletion() {
+      const totalQuestions = questionOrder.length;
+      const answeredQuestions = questionOrder.filter(({ lectureIndex, questionIndex }) => {
+        const question = examData.lectures[lectureIndex].questions[questionIndex];
+        return question.answer && question.answer.trim() !== '';
+      }).length;
+
+      const completionPercentage = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+      document.getElementById('exam-completion').textContent = `Exam Completion: ${completionPercentage}%`;
+    }
+
+    // Function to jump to a specific lecture
+    function jumpToLecture(lectureIndex) {
+        saveCurrentAnswer();
+        const currentEditorId = `answer-<span class="math-inline">\{questionOrder\[currentQuestionIndex\]\.lectureIndex\}\-</span>{questionOrder[currentQuestionIndex].questionIndex}`;
