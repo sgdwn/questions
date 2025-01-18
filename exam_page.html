@@ -79,10 +79,8 @@
     #contents-list li:hover {
       text-decoration: underline;
     }
-    .lecture-completion {
-      font-size: smaller;
-      color: gray;
-      margin-left: 5px;
+    .completed {
+      color: green; /* Or any style you prefer for completed items */
     }
   </style>
   <script src="tiny/tinymce.min.js" referrerpolicy="origin"></script>
@@ -90,13 +88,13 @@
 <body>
   <h1>Exam Page</h1>
 
-  <div id="contents-button" class="dropdown-button" onclick="toggleDropdown('contents')">Contents <span class="arrow">&#8595;</span></div>
+  <div id="contents-button" class="dropdown-button" onclick="toggleContents()">Contents <span class="arrow">&#8595;</span></div>
   <div id="contents-box" class="dropdown-box">
     <div id="exam-completion">Exam Completion: 0%</div>
     <ul id="contents-list"></ul>
   </div>
 
-  <div id="settings-button" class="dropdown-button" onclick="toggleDropdown('settings')">Settings <span class="arrow">&#8595;</span></div>
+  <div id="settings-button" class="dropdown-button" onclick="toggleSettings()">Settings <span class="arrow">&#8595;</span></div>
   <div id="settings-box" class="dropdown-box">
     <input type="file" id="file-upload" accept=".json">
     <button onclick="loadConfig()">Load Configuration</button>
@@ -125,7 +123,6 @@
     let timerId = null;
     let updateIndicatorTimerId = null;
     let lastSavedTime = null;
-    let activeDropdown = null; // Track the currently open dropdown
 
     function loadConfig() {
       const fileInput = document.getElementById('file-upload');
@@ -207,7 +204,7 @@
         questionDiv.appendChild(questionText);
 
         // Create a unique ID for the textarea
-        const answerAreaId = `answer-<span class="math-inline">\{lectureIndex\}\-</span>{questionIndex}`;
+        const answerAreaId = `answer-${lectureIndex}-${questionIndex}`;
 
         // Create the textarea for the answer
         const answerArea = document.createElement('textarea');
@@ -253,7 +250,7 @@
     function showNextQuestion() {
       saveCurrentAnswer();
       // Remove the current editor instance before moving to the next question
-      const currentEditorId = `answer-<span class="math-inline">\{questionOrder\[currentQuestionIndex\]\.lectureIndex\}\-</span>{questionOrder[currentQuestionIndex].questionIndex}`;
+      const currentEditorId = `answer-${questionOrder[currentQuestionIndex].lectureIndex}-${questionOrder[currentQuestionIndex].questionIndex}`;
       tinymce.remove(`#${currentEditorId}`);
       currentQuestionIndex++;
       if (currentQuestionIndex >= questionOrder.length) {
@@ -266,7 +263,7 @@
     function showPreviousQuestion() {
       saveCurrentAnswer();
       // Remove the current editor instance before moving to the previous question
-      const currentEditorId = `answer-<span class="math-inline">\{questionOrder\[currentQuestionIndex\]\.lectureIndex\}\-</span>{questionOrder[currentQuestionIndex].questionIndex}`;
+      const currentEditorId = `answer-${questionOrder[currentQuestionIndex].lectureIndex}-${questionOrder[currentQuestionIndex].questionIndex}`;
       tinymce.remove(`#${currentEditorId}`);
       currentQuestionIndex--;
       if (currentQuestionIndex < 0) {
@@ -280,7 +277,7 @@
       if (questionOrder.length === 0) return;
 
       const { lectureIndex, questionIndex } = questionOrder[currentQuestionIndex];
-      const answerAreaId = `answer-<span class="math-inline">\{lectureIndex\}\-</span>{questionIndex}`;
+      const answerAreaId = `answer-${lectureIndex}-${questionIndex}`;
       const editor = tinymce.get(answerAreaId);
 
       if (editor) {
@@ -330,48 +327,33 @@
       }
     }
 
-    function toggleDropdown(type) {
-        const button = document.getElementById(`${type}-button`);
-        const box = document.getElementById(`${type}-box`);
+    // Toggle settings
+    function toggleSettings() {
+      const settingsBox = document.getElementById('settings-box');
+      const settingsButton = document.getElementById('settings-button');
+
+      toggleDropdown(settingsButton, settingsBox);
+    }
+
+    // Toggle contents
+    function toggleContents() {
+      const contentsBox = document.getElementById('contents-box');
+      const contentsButton = document.getElementById('contents-button');
+
+      toggleDropdown(contentsButton, contentsBox);
+    }
+
+    // Generic dropdown toggle function
+    function toggleDropdown(button, box) {
         const arrow = button.querySelector('.arrow');
-      
-        if (activeDropdown === type) {
-          // Close the currently active dropdown
-          box.style.display = 'none';
-          button.classList.remove('dropdown-open');
-          arrow.style.transform = 'rotate(0deg)';
-          activeDropdown = null;
+        if (box.style.display === 'none') {
+            box.style.display = 'block';
+            button.parentElement.classList.add('dropdown-open');
         } else {
-          // Close any other open dropdown
-          if (activeDropdown) {
-            const activeBox = document.getElementById(`${activeDropdown}-box`);
-            const activeButton = document.getElementById(`${activeDropdown}-button`);
-            const activeArrow = activeButton.querySelector('.arrow');
-      
-            activeBox.style.display = 'none';
-            activeButton.classList.remove('dropdown-open');
-            activeArrow.style.transform = 'rotate(0deg)';
-          }
-      
-          // Open the selected dropdown
-          box.style.display = 'block';
-          button.classList.add('dropdown-open');
-          arrow.style.transform = 'rotate(180deg)';
-          activeDropdown = type;
+            box.style.display = 'none';
+            button.parentElement.classList.remove('dropdown-open');
         }
-      }
-      
-      // Close dropdowns when clicking outside
-      document.addEventListener('click', function(event) {
-        if (activeDropdown) {
-          const activeBox = document.getElementById(`${activeDropdown}-box`);
-          const activeButton = document.getElementById(`${activeDropdown}-button`);
-      
-          if (!activeButton.contains(event.target) && !activeBox.contains(event.target)) {
-            toggleDropdown(activeDropdown);
-          }
-        }
-      });
+    }
 
     // Function to set the question order (sequential or random)
     function setQuestionOrder(order) {
@@ -385,56 +367,50 @@
 
     // Populate the contents dropdown list
     function populateContents() {
-        const contentsList = document.getElementById('contents-list');
-        contentsList.innerHTML = ''; // Clear existing list
-      
-        examData.lectures.forEach((lecture, lectureIndex) => {
-          const listItem = document.createElement('li');
-          listItem.textContent = lecture.name;
-          
-          // Calculate and display the completion percentage for the lecture
-          const completionPercentage = calculateLectureCompletion(lectureIndex);
-          const completionSpan = document.createElement('span');
-          completionSpan.classList.add('lecture-completion');
-          completionSpan.textContent = `(${completionPercentage}% complete)`;
-          listItem.appendChild(completionSpan);
-      
-          listItem.addEventListener('click', () => {
-            jumpToLecture(lectureIndex);
-            toggleDropdown('contents');
-          });
-      
-          contentsList.appendChild(listItem);
+      const contentsList = document.getElementById('contents-list');
+      contentsList.innerHTML = ''; // Clear existing list
+
+      examData.lectures.forEach((lecture, index) => {
+        const listItem = document.createElement('li');
+        listItem.textContent = lecture.name;
+        listItem.addEventListener('click', () => {
+          jumpToLecture(index);
+          toggleContents();
         });
-      
-        updateExamCompletion(); // Update overall exam completion
-      }
 
-    // Function to calculate the completion percentage of a specific lecture
-    function calculateLectureCompletion(lectureIndex) {
+        // Add a completion indicator (e.g., a checkmark) if the lecture is completed
+        if (isLectureComplete(index)) {
+          listItem.classList.add('completed'); // You can style this class in CSS
+          listItem.textContent += " ✔";
+        }
+
+        contentsList.appendChild(listItem);
+      });
+
+      updateExamCompletion(); // Update overall exam completion
+    }
+
+    // Function to check if a lecture is complete
+    function isLectureComplete(lectureIndex) {
       const lecture = examData.lectures[lectureIndex];
-      const totalQuestions = lecture.questions.length;
-      const answeredQuestions = lecture.questions.filter(question => question.answer && question.answer.trim() !== '').length;
-
-      return totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+      return lecture.questions.every(question => question.answer && question.answer.trim() !== '');
     }
 
     // Function to update the completion status of each lecture
     function updateLectureCompletion() {
-        const listItems = document.querySelectorAll('#contents-list li');
-        listItems.forEach((item, index) => {
-          const completionPercentage = calculateLectureCompletion(index);
-          let completionSpan = item.querySelector('.lecture-completion');
-          if (!completionSpan) {
-            completionSpan = document.createElement('span');
-            completionSpan.classList.add('lecture-completion');
-            item.appendChild(completionSpan);
-          }
-          completionSpan.textContent = `(${completionPercentage}% complete)`;
-        });
-      
-        updateExamCompletion(); // Update overall exam completion
-      }
+      const listItems = document.querySelectorAll('#contents-list li');
+      listItems.forEach((item, index) => {
+        if (isLectureComplete(index)) {
+          item.classList.add('completed');
+          item.textContent = examData.lectures[index].name + " ✔";
+        } else {
+          item.classList.remove('completed');
+          item.textContent = examData.lectures[index].name; // Remove the checkmark if it was previously added
+        }
+      });
+
+      updateExamCompletion(); // Update overall exam completion
+    }
 
     // Function to update the overall exam completion percentage
     function updateExamCompletion() {
@@ -451,4 +427,30 @@
     // Function to jump to a specific lecture
     function jumpToLecture(lectureIndex) {
         saveCurrentAnswer();
-        const currentEditorId = `answer-<span class="math-inline">\{questionOrder\[currentQuestionIndex\]\.lectureIndex\}\-</span>{questionOrder[currentQuestionIndex].questionIndex}`;
+        const currentEditorId = `answer-${questionOrder[currentQuestionIndex].lectureIndex}-${questionOrder[currentQuestionIndex].questionIndex}`;
+        tinymce.remove(`#${currentEditorId}`);
+
+        // Find the index of the first question in the selected lecture
+        let targetQuestionIndex = 0;
+        for (let i = 0; i < questionOrder.length; i++) {
+          if (questionOrder[i].lectureIndex === lectureIndex) {
+            targetQuestionIndex = i;
+            break;
+          }
+        }
+
+        currentQuestionIndex = targetQuestionIndex;
+        showQuestion();
+        updateLectureCompletion();
+      }
+
+    // Helper function to shuffle an array
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+  </script>
+</body>
+</html>
